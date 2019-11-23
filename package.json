@@ -1,0 +1,15 @@
+{
+  "name": "monielovebot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "npm run build",
+    "build": "spago bundle-app --to index.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.30.0"
+  }
+}
