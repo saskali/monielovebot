@@ -14,6 +14,20 @@ import TelegramBot (connect, onMessage, sendMessage)
 
 type Config = {token :: String}
 
+{-
+
+Commands we want to support:
+- /add AMOUNT REASON: records an expense for AMOUNT and REASON on the current user. Might return balance
+- /balance: returns the amount of expenses for both in the current period
+- /payout: prints out how much someone should pay to the other and resets the balance
+
+Details:
+- we'll record transactions on a file and calculate the balance on the fly
+- we'll record an "audit log" of commands that are issued
+
+-}
+
+
 main :: Effect Unit
 main = do
   c <- map readJSON (readTextFile UTF8 "./config.json")
