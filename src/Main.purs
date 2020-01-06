@@ -11,12 +11,11 @@ import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Number as Numbers
 import Data.String.CodeUnits (fromCharArray)
-import Data.Traversable (for)
 import Effect (Effect)
 import Effect.Class.Console (logShow)
 import Effect.Console (log)
 import Node.Encoding (Encoding(..))
-import Node.FS.Sync (exists, readTextFile, writeTextFile)
+import Node.FS.Sync as FS
 import Simple.JSON (readJSON, writeJSON)
 import TelegramBot as Telegram
 import Text.Parsing.StringParser (ParseError, fail, runParser)
@@ -69,7 +68,7 @@ transactionFile =  "./transactions.json"
 
 main :: Effect Unit
 main = do
-  c <- map readJSON (readTextFile UTF8 "./config.json")
+  c <- map readJSON (FS.readTextFile UTF8 "./config.json")
   case c of
     Left e ->
       log $ "config.json is malformed: " <> show e
@@ -92,10 +91,10 @@ main = do
 
 withTransactions :: (Array Transaction -> Effect Unit) -> Effect Unit
 withTransactions action = do
-  whenM (map not $ exists transactionFile) do
+  whenM (map not $ FS.exists transactionFile) do
     log "Transaction file doesn't exist, creating.."
-    writeTextFile UTF8 transactionFile "[]"
-  maybeTransactions <- map readJSON (readTextFile UTF8 transactionFile)
+    FS.writeTextFile UTF8 transactionFile "[]"
+  maybeTransactions <- map readJSON (FS.readTextFile UTF8 transactionFile)
   case maybeTransactions of
     Left e -> log $ "ERROR: transactions.json is malformed: " <> show e
     Right transactions -> action transactions
@@ -112,22 +111,25 @@ runCommand telegram command = withTransactions \transactions -> do
         <<< Array.groupBy (\a b -> a.issuer == b.issuer)
         <<< Array.sortWith (_.issuer)
 
+  let formatBalance { issuer, total } = "- " <> issuer <> ": " <> show total <> "\n"
+
   case command of
     Balance -> do
-      let formatBalance { issuer, total } = "* " <> issuer <> ": " <> show total <> "\n"
       send $ "Current balance:\n" <> Array.fold (map formatBalance $ getBalances transactions)
 
     Payout -> do
       case Array.sortWith (_.total) (getBalances transactions) of
         [leastSpender, mostSpender] -> do
           let diff = mostSpender.total - leastSpender.total
+          send $ "Current balance:\n" <> Array.fold (map formatBalance $ getBalances transactions)
           send $ "`" <> leastSpender.issuer <> "` owes " <> show (diff / 2.0) <> " to `" <> mostSpender.issuer <> "`"
+          FS.unlink transactionFile
         _ -> send "Stuff's broken yo"
 
     Add transaction -> do
       log "Writing new transaction to file.."
       let newTransactions = Array.cons transaction transactions
-      writeTextFile UTF8 transactionFile $ writeJSON newTransactions
+      FS.writeTextFile UTF8 transactionFile $ writeJSON newTransactions
 
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
