@@ -18,7 +18,7 @@ import Effect.Console (log)
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync (exists, readTextFile, writeTextFile)
 import Simple.JSON (readJSON, writeJSON)
-import TelegramBot as TelegramBot
+import TelegramBot as Telegram
 import Text.Parsing.StringParser (ParseError, fail, runParser)
 import Text.Parsing.StringParser.CodePoints (anyChar, anyDigit, satisfy, skipSpaces, string)
 import Text.Parsing.StringParser.Combinators (choice, many, many1)
@@ -33,6 +33,13 @@ type Transaction =
   , reason :: String
   , issuer :: String
   , date :: Int
+  }
+
+-- | This holds the reference to our current bot/chat around the app,
+-- | so we can send messages back
+type TelegramCoords =
+  { bot :: Telegram.Bot
+  , chatID :: Int
   }
 
 data Command
@@ -51,7 +58,6 @@ instance showCommand :: Show Command where
 {-
 
 TODO:
-- read transaction file to calculate balance
 - answer to add command confirming the addition
 - answer to balance command
 - write audit log of commands
@@ -69,23 +75,20 @@ main = do
       log $ "config.json is malformed: " <> show e
     Right (config :: Config) -> do
 
-      bot <- TelegramBot.connect config.token
-      TelegramBot.onMessage bot callback
+      bot <- Telegram.connect config.token
+      Telegram.onMessage bot $ callback bot
       where
-        callback m
+        callback bot m
           | Right message <- runExcept m
           , Just from <- message.from
           , Just username <- from.username
           , Just user <- Array.find (username == _) config.usernames
-          , Just text <- message.text = runMessage text user message.date
+          , Just text <- message.text = case parseCommand text user message.date of
+            Right command -> do
+              log $ "Running command: " <> show command
+              runCommand { bot, chatID: message.chat.id } command
+            Left errors -> logShow errors
           | otherwise = pure unit
-
-runMessage :: String -> String -> Int -> Effect Unit
-runMessage text user timestamp = case parseCommand text user timestamp of
-  Right command -> do
-    log $ "Running command: " <> show command
-    runCommand command
-  Left errors -> logShow errors
 
 withTransactions :: (Array Transaction -> Effect Unit) -> Effect Unit
 withTransactions action = do
@@ -97,23 +100,28 @@ withTransactions action = do
     Left e -> log $ "ERROR: transactions.json is malformed: " <> show e
     Right transactions -> action transactions
 
-runCommand :: Command -> Effect Unit
-runCommand Balance = withTransactions \transactions -> do
-  let groupedTransactions = Array.groupBy (\a b -> a.issuer == b.issuer)
-                              $ Array.sortWith (_.issuer) transactions
+runCommand :: TelegramCoords -> Command -> Effect Unit
+runCommand telegram command = withTransactions \transactions -> do
+  let send = Telegram.sendMessage telegram.bot telegram.chatID
+  case command of
+    Balance -> do
+      let groupedTransactions = Array.groupBy (\a b -> a.issuer == b.issuer)
+                                $ Array.sortWith (_.issuer) transactions
 
-  totals <- for groupedTransactions \userTransactions -> do
-    let issuer = _.issuer $ NonEmpty.head userTransactions
-    let total = Array.foldr (+) 0.0 $ map _.amount userTransactions
-    pure { issuer, total }
+      totals <- for groupedTransactions \userTransactions -> do
+        let issuer = _.issuer $ NonEmpty.head userTransactions
+        let total = Array.foldr (+) 0.0 $ map _.amount userTransactions
+        pure { issuer, total }
+      let formatBalance { issuer, total } = "* " <> issuer <> ": " <> show total <> "\n"
 
-  log $ "Current balance: " <> show totals
-  pure unit
-runCommand Payout = pure unit
-runCommand (Add transaction) = withTransactions \transactions -> do
-  log "Writing new transaction to file.."
-  let newTransactions = Array.cons transaction transactions
-  writeTextFile UTF8 transactionFile $ writeJSON newTransactions
+      send $ "Current balance:\n" <> Array.fold (map formatBalance totals)
+
+    Payout -> pure unit
+
+    Add transaction -> do
+      log "Writing new transaction to file.."
+      let newTransactions = Array.cons transaction transactions
+      writeTextFile UTF8 transactionFile $ writeJSON newTransactions
 
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
