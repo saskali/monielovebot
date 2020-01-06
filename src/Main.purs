@@ -6,14 +6,10 @@ import Control.Alt ((<|>))
 import Control.Monad.Except (runExcept)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmpty
-import Data.DateTime (DateTime(..))
 import Data.Either (Either(..))
-import Data.Foldable as Array
-import Data.List (List, toUnfoldable)
 import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Number as Numbers
-import Data.Number.Format (toString)
 import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (for)
 import Effect (Effect)
@@ -22,10 +18,10 @@ import Effect.Console (log)
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync (exists, readTextFile, writeTextFile)
 import Simple.JSON (readJSON, writeJSON)
-import TelegramBot (connect, onMessage, sendMessage)
-import Text.Parsing.StringParser (ParseError(..), fail, runParser)
+import TelegramBot as TelegramBot
+import Text.Parsing.StringParser (ParseError, fail, runParser)
 import Text.Parsing.StringParser.CodePoints (anyChar, anyDigit, satisfy, skipSpaces, string)
-import Text.Parsing.StringParser.Combinators (choice, many, many1, optionMaybe)
+import Text.Parsing.StringParser.Combinators (choice, many, many1)
 
 type Config =
   { token :: String
@@ -62,6 +58,7 @@ TODO:
 
 -}
 
+transactionFile :: String
 transactionFile =  "./transactions.json"
 
 main :: Effect Unit
@@ -72,8 +69,8 @@ main = do
       log $ "config.json is malformed: " <> show e
     Right (config :: Config) -> do
 
-      bot <- connect config.token
-      onMessage bot callback
+      bot <- TelegramBot.connect config.token
+      TelegramBot.onMessage bot callback
       where
         callback m
           | Right message <- runExcept m
@@ -105,9 +102,9 @@ runCommand Balance = withTransactions \transactions -> do
   let groupedTransactions = Array.groupBy (\a b -> a.issuer == b.issuer)
                               $ Array.sortWith (_.issuer) transactions
 
-  totals <- for groupedTransactions \transactions -> do
-    let issuer = _.issuer $ NonEmpty.head transactions
-    let total = Array.foldr (+) 0.0 $ map _.amount transactions
+  totals <- for groupedTransactions \userTransactions -> do
+    let issuer = _.issuer $ NonEmpty.head userTransactions
+    let total = Array.foldr (+) 0.0 $ map _.amount userTransactions
     pure { issuer, total }
 
   log $ "Current balance: " <> show totals
@@ -135,11 +132,11 @@ parseCommand text username timestamp = do
     parseAdd = do
       void $ string  "/add"
       skipSpaces
-      amountString <- map (fromCharArray <<< toUnfoldable <<< List.fromFoldable)
+      amountString <- map (fromCharArray <<< List.toUnfoldable <<< List.fromFoldable)
         $ many1 (choice [anyDigit, satisfy (_ == '.')])
       amount <- case Numbers.fromString amountString of
         Just n -> pure n
         Nothing -> fail ("ERROR: could not parse amount " <> amountString)
       skipSpaces
-      reason <- map (fromCharArray <<< toUnfoldable) $ many anyChar
+      reason <- map (fromCharArray <<< List.toUnfoldable) $ many anyChar
       pure $ Add {amount, reason, issuer: username, date: timestamp}
