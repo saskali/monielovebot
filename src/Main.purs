@@ -4,6 +4,8 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Monad.Except (runExcept)
+import Data.Array (foldr)
+import Data.Array as Array
 import Data.Array.NonEmpty (fromNonEmpty)
 import Data.DateTime (DateTime(..))
 import Data.Either (Either(..))
@@ -19,8 +21,8 @@ import Effect (Effect)
 import Effect.Class.Console (logShow)
 import Effect.Console (log)
 import Node.Encoding (Encoding(..))
-import Node.FS.Sync (readTextFile)
-import Simple.JSON (readJSON)
+import Node.FS.Sync (exists, readTextFile, writeTextFile)
+import Simple.JSON (readJSON, writeJSON)
 import TelegramBot (connect, onMessage, sendMessage)
 import Text.Parsing.StringParser (ParseError(..), fail, runParser)
 import Text.Parsing.StringParser.CodePoints (anyChar, anyDigit, satisfy, skipSpaces, string)
@@ -53,12 +55,15 @@ instance showCommand :: Show Command where
 
 {-
 
-Details:
-- we'll record transactions on a file and calculate the balance on the fly
-- we'll record an "audit log" of commands that are issued
+TODO:
+- read transaction file to calculate balance
+- answer to add command confirming the addition
+- answer to balance command
+- write audit log of commands
 
 -}
 
+transactionFile =  "./transactions.json"
 
 main :: Effect Unit
 main = do
@@ -76,10 +81,36 @@ main = do
           , Just from <- message.from
           , Just username <- from.username
           , Just user <- Array.find (username == _) config.usernames
-          , Just text <- message.text = case parseCommand text user message.date of
-            Right command -> logShow command
-            Left errors -> logShow errors
+          , Just text <- message.text = runMessage text user message.date
           | otherwise = pure unit
+
+runMessage :: String -> String -> Int -> Effect Unit
+runMessage text user timestamp = case parseCommand text user timestamp of
+  Right command -> do
+    log $ "Running command: " <> show command
+    runCommand command
+  Left errors -> logShow errors
+
+withTransactions :: (Array Transaction -> Effect Unit) -> Effect Unit
+withTransactions action = do
+  whenM (map not $ exists transactionFile) do
+    log "Transaction file doesn't exist, creating.."
+    writeTextFile UTF8 transactionFile "[]"
+  maybeTransactions <- map readJSON (readTextFile UTF8 transactionFile)
+  case maybeTransactions of
+    Left e -> log $ "ERROR: transactions.json is malformed: " <> show e
+    Right transactions -> action transactions
+
+runCommand :: Command -> Effect Unit
+runCommand Balance = withTransactions \transactions -> do
+  let total = foldr (+) 0.0 (map _.amount transactions)
+  -- TODO: actually split by people
+  pure unit
+runCommand Payout = pure unit
+runCommand (Add transaction) = withTransactions \transactions -> do
+  log "Writing new transaction to file.."
+  let newTransactions = Array.cons transaction transactions
+  writeTextFile UTF8 transactionFile $ writeJSON newTransactions
 
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
