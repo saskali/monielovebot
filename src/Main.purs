@@ -4,19 +4,18 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Monad.Except (runExcept)
-import Data.Array (foldr)
 import Data.Array as Array
-import Data.Array.NonEmpty (fromNonEmpty)
+import Data.Array.NonEmpty as NonEmpty
 import Data.DateTime (DateTime(..))
 import Data.Either (Either(..))
 import Data.Foldable as Array
 import Data.List (List, toUnfoldable)
 import Data.List as List
 import Data.Maybe (Maybe(..))
-import Data.NonEmpty (NonEmpty(..))
-import Data.NonEmpty as NonEmpty
 import Data.Number as Numbers
+import Data.Number.Format (toString)
 import Data.String.CodeUnits (fromCharArray)
+import Data.Traversable (for)
 import Effect (Effect)
 import Effect.Class.Console (logShow)
 import Effect.Console (log)
@@ -103,8 +102,15 @@ withTransactions action = do
 
 runCommand :: Command -> Effect Unit
 runCommand Balance = withTransactions \transactions -> do
-  let total = foldr (+) 0.0 (map _.amount transactions)
-  -- TODO: actually split by people
+  let groupedTransactions = Array.groupBy (\a b -> a.issuer == b.issuer)
+                              $ Array.sortWith (_.issuer) transactions
+
+  totals <- for groupedTransactions \transactions -> do
+    let issuer = _.issuer $ NonEmpty.head transactions
+    let total = Array.foldr (+) 0.0 $ map _.amount transactions
+    pure { issuer, total }
+
+  log $ "Current balance: " <> show totals
   pure unit
 runCommand Payout = pure unit
 runCommand (Add transaction) = withTransactions \transactions -> do
