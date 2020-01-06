@@ -102,21 +102,27 @@ withTransactions action = do
 
 runCommand :: TelegramCoords -> Command -> Effect Unit
 runCommand telegram command = withTransactions \transactions -> do
-  let send = Telegram.sendMessage telegram.bot telegram.chatID
+  let send msg = Telegram.sendMessageWithOptions telegram.bot telegram.chatID msg { parse_mode: "Markdown" }
+  let getUserBalance userTransactions =
+        { issuer: _.issuer $ NonEmpty.head userTransactions
+        , total: Array.foldr (+) 0.0 $ map _.amount userTransactions
+        }
+  let getBalances
+        = map getUserBalance
+        <<< Array.groupBy (\a b -> a.issuer == b.issuer)
+        <<< Array.sortWith (_.issuer)
+
   case command of
     Balance -> do
-      let groupedTransactions = Array.groupBy (\a b -> a.issuer == b.issuer)
-                                $ Array.sortWith (_.issuer) transactions
-
-      totals <- for groupedTransactions \userTransactions -> do
-        let issuer = _.issuer $ NonEmpty.head userTransactions
-        let total = Array.foldr (+) 0.0 $ map _.amount userTransactions
-        pure { issuer, total }
       let formatBalance { issuer, total } = "* " <> issuer <> ": " <> show total <> "\n"
+      send $ "Current balance:\n" <> Array.fold (map formatBalance $ getBalances transactions)
 
-      send $ "Current balance:\n" <> Array.fold (map formatBalance totals)
-
-    Payout -> pure unit
+    Payout -> do
+      case Array.sortWith (_.total) (getBalances transactions) of
+        [leastSpender, mostSpender] -> do
+          let diff = mostSpender.total - leastSpender.total
+          send $ "`" <> leastSpender.issuer <> "` owes " <> show (diff / 2.0) <> " to `" <> mostSpender.issuer <> "`"
+        _ -> send "Stuff's broken yo"
 
     Add transaction -> do
       log "Writing new transaction to file.."
