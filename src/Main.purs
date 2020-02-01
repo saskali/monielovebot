@@ -111,12 +111,17 @@ runCommand telegram command = withTransactions \transactions -> do
         <<< Array.sortWith (_.issuer)
 
   let formatBalance { issuer, total } = "- " <> issuer <> ": " <> show total <> "\n"
+  let differenceText = case Array.sortWith (_.total) (getBalances transactions) of
+        [leastSpender, mostSpender] ->
+          let diff = mostSpender.total - leastSpender.total
+          in "`" <> leastSpender.issuer <> "` spent " <> show diff <> " more than `" <> mostSpender.issuer <> "`"
+        _ -> "Stuff's broken yo"
 
   case command of
-    Balance -> do
+    Balance ->
       send $ "Current balance:\n" <> Array.fold (map formatBalance $ getBalances transactions)
 
-    Payout -> do
+    Payout ->
       case Array.sortWith (_.total) (getBalances transactions) of
         [leastSpender, mostSpender] -> do
           let diff = mostSpender.total - leastSpender.total
@@ -129,7 +134,7 @@ runCommand telegram command = withTransactions \transactions -> do
       log "Writing new transaction to file.."
       let newTransactions = Array.cons transaction transactions
       FS.writeTextFile UTF8 transactionFile $ writeJSON newTransactions
-      send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason
+      send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason <> "\n" <> differenceText
 
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
