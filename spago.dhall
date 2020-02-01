@@ -1,4 +1,4 @@
-{ name = "moniebot"
+{ name = "monielovebot"
 , dependencies =
     [ "console"
     , "effect"
