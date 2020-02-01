@@ -57,7 +57,6 @@ instance showCommand :: Show Command where
 {-
 
 TODO:
-- answer to add command confirming the addition
 - answer to balance command
 - write audit log of commands
 
@@ -130,6 +129,7 @@ runCommand telegram command = withTransactions \transactions -> do
       log "Writing new transaction to file.."
       let newTransactions = Array.cons transaction transactions
       FS.writeTextFile UTF8 transactionFile $ writeJSON newTransactions
+      send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason
 
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
