@@ -114,7 +114,7 @@ runCommand telegram command = withTransactions \transactions -> do
   let differenceText = case Array.sortWith (_.total) (getBalances transactions) of
         [leastSpender, mostSpender] ->
           let diff = mostSpender.total - leastSpender.total
-          in "`" <> leastSpender.issuer <> "` spent " <> show diff <> " more than `" <> mostSpender.issuer <> "`"
+          in "`" <> mostSpender.issuer <> "` spent " <> show diff <> " more than `" <> leastSpender.issuer <> "`"
         _ -> "Stuff's broken yo"
 
   case command of
