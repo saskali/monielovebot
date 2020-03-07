@@ -132,7 +132,7 @@ runCommand telegram entry = do
   entries <- readJsonlFile commandLog
   let transactions = transactionsFromLog entries
 
-  let send msg = Telegram.sendMessageWithOptions telegram.bot telegram.chatID msg { parse_mode: "Markdown" }
+  let send msg = Telegram.sendMessageWithOptions telegram.bot telegram.chatID msg {}
   let getUserBalance userTransactions =
         { issuer: _.issuer $ NonEmpty.head userTransactions
         , total: Array.foldr (+) 0.0 $ map _.amount userTransactions
