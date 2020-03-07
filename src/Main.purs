@@ -7,6 +7,7 @@ import Control.Monad.Except (runExcept)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmpty
 import Data.Either (Either(..))
+import Data.Foldable (foldMap)
 import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Number as Numbers
@@ -48,11 +49,14 @@ data Command
   | Balance
   -- | prints out how much someone should pay to the other and resets balance
   | Payout
+  -- | prints out log of all transactions
+  | Log
 
 instance showCommand :: Show Command where
   show Balance = "Balance"
   show Payout = "Payout"
   show (Add transaction) = "Add " <> show transaction
+  show Log = "Log"
 
 {-
 
@@ -136,6 +140,17 @@ runCommand telegram command = withTransactions \transactions -> do
       FS.writeTextFile UTF8 transactionFile $ writeJSON newTransactions
       send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason <> "\n" <> differenceText
 
+    Log -> do
+      log "printing log of transactions"
+      send $ formatLog transactions
+
+formatLog :: Array Transaction -> String
+formatLog transactions = foldMap formatTransaction transactions
+  where
+    formatTransaction :: Transaction -> String
+    formatTransaction {issuer, amount, reason, date} 
+      = "- " <> issuer <> " spent " <> show amount <> "€ for " <> reason <> " on the " <> show date <> "\n"
+
 parseCommand :: String -> String -> Int -> Either ParseError Command
 parseCommand text username timestamp = do
   runParser parser text
@@ -144,11 +159,14 @@ parseCommand text username timestamp = do
       = parseBalance
       <|> parsePayout
       <|> parseAdd
+      <|> parseLog
       <|> fail ("ERROR: could not parse command: " <> text)
 
     parseBalance = string "/balance" *> pure Balance
 
     parsePayout = string "/payout" *> pure Payout
+
+    parseLog = string "/log" *> pure Log
 
     parseAdd = do
       void $ string  "/add"
