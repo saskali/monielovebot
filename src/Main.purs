@@ -132,7 +132,7 @@ runCommand telegram entry = do
   entries <- readJsonlFile commandLog
   let transactions = transactionsFromLog entries
 
-  let send msg = Telegram.sendMessageWithOptions telegram.bot telegram.chatID msg {}
+  let send msg = Telegram.sendMessageWithOptions telegram.bot telegram.chatID msg { parse_mode: "Markdown" }
   let getUserBalance userTransactions =
         { issuer: _.issuer $ NonEmpty.head userTransactions
         , total: Array.foldr (+) 0.0 $ map _.amount userTransactions
@@ -166,7 +166,6 @@ runCommand telegram entry = do
       send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason <> "\n" <> differenceText
 
     Log -> do
-      log "printing log of transactions"
       send $ formatLog transactions
 
 formatLog :: Array Transaction -> String
@@ -174,7 +173,7 @@ formatLog transactions = foldMap formatTransaction transactions
   where
     formatTransaction :: Transaction -> String
     formatTransaction {issuer, amount, reason, date}
-      = "- " <> issuer <> " spent " <> show amount <> "€ for " <> reason <> " on the " <> show date <> "\n"
+      = "- `" <> issuer <> "` spent " <> show amount <> "€ for `" <> reason <> "` on the " <> show date <> "\n"
 
 
 transactionsFromLog :: Array Entry -> Array Transaction
