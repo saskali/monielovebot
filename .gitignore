@@ -9,4 +9,4 @@
 /.psa*
 /.spago
 config.json
-transactions.json
+*.jsonl
