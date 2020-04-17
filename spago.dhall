@@ -2,6 +2,7 @@
 , dependencies =
   [ "console"
   , "effect"
+  , "formatters"
   , "kishimen"
   , "node-fs"
   , "node-telegram-bot-api"

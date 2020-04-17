@@ -8,6 +8,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmpty
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
+import Data.Formatter.Number (Formatter(..), format)
 import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Number as Numbers
@@ -121,6 +122,8 @@ readJsonlFile filename = do
       Left _ -> Nothing
       Right e -> e
 
+formatFloat :: Number -> String
+formatFloat = format $ Formatter {abbreviations: false, after: 2, before: 0, comma: false, sign: false}
 
 runCommand :: TelegramCoords -> Entry -> Effect Unit
 runCommand telegram entry = do
@@ -142,11 +145,11 @@ runCommand telegram entry = do
         <<< Array.groupBy (\a b -> a.issuer == b.issuer)
         <<< Array.sortWith (_.issuer)
 
-  let formatBalance { issuer, total } = "- " <> issuer <> ": " <> show total <> "\n"
+  let formatBalance { issuer, total } = "- " <> issuer <> ": " <> formatFloat total <> "\n"
   let differenceText = case Array.sortWith (_.total) (getBalances transactions) of
         [leastSpender, mostSpender] ->
           let diff = mostSpender.total - leastSpender.total
-          in "`" <> mostSpender.issuer <> "` spent " <> show diff <> " more than `" <> leastSpender.issuer <> "`"
+          in "`" <> mostSpender.issuer <> "` spent " <> formatFloat diff <> " more than `" <> leastSpender.issuer <> "`"
         _ -> "Stuff's broken yo"
 
   case entry.command of
@@ -158,12 +161,12 @@ runCommand telegram entry = do
         [leastSpender, mostSpender] -> do
           let diff = mostSpender.total - leastSpender.total
           send $ "Current balance:\n" <> Array.fold (map formatBalance $ getBalances transactions)
-          send $ "`" <> leastSpender.issuer <> "` owes " <> show (diff / 2.0) <> " to `" <> mostSpender.issuer <> "`"
+          send $ "`" <> leastSpender.issuer <> "` owes " <> formatFloat (diff / 2.0) <> " to `" <> mostSpender.issuer <> "`"
           FS.rename commandLog (commandLog <> ".bak")
         _ -> send "Stuff's broken yo"
 
     Add transaction -> do
-      send $ "You have added " <> show transaction.amount <> " for " <> show transaction.reason <> "\n" <> differenceText
+      send $ "You have added " <> formatFloat transaction.amount <> " for " <> show transaction.reason <> "\n" <> differenceText
 
     Log -> do
       send $ formatLog transactions
@@ -173,7 +176,7 @@ formatLog transactions = foldMap formatTransaction transactions
   where
     formatTransaction :: Transaction -> String
     formatTransaction {issuer, amount, reason, date}
-      = "- `" <> issuer <> "` spent " <> show amount <> "€ for `" <> reason <> "` on the " <> show date <> "\n"
+      = "- `" <> issuer <> "` spent " <> formatFloat amount <> "€ for `" <> reason <> "` on the " <> show date <> "\n"
 
 
 transactionsFromLog :: Array Entry -> Array Transaction
