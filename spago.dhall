@@ -1,6 +1,7 @@
 { name = "monielovebot"
 , dependencies =
   [ "console"
+  , "datetime"
   , "effect"
   , "formatters"
   , "kishimen"
@@ -9,6 +10,7 @@
   , "numbers"
   , "psci-support"
   , "simple-json"
+  , "simple-timestamp"
   , "string-parsers"
   , "stringutils"
   ]

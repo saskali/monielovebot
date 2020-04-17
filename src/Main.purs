@@ -6,16 +6,21 @@ import Control.Alt ((<|>))
 import Control.Monad.Except (runExcept)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmpty
+import Data.DateTime (DateTime)
+import Data.DateTime.Instant as Instant
+import Data.Formatter.DateTime as DateTime
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
-import Data.Formatter.Number (Formatter(..), format)
+import Data.Formatter.Number as Number
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
+import Data.Int (toNumber)
 import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Number as Numbers
 import Data.String.CodeUnits (fromCharArray)
 import Data.String.Utils as String
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Show (genericShow)
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class.Console (logShow)
 import Effect.Console (log)
@@ -23,6 +28,7 @@ import Kishimen (genericSumToVariant, variantToGenericSum)
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync as FS
 import Simple.JSON as Json
+import Timestamp (iso8601ShortFormat)
 import TelegramBot as Telegram
 import Text.Parsing.StringParser (ParseError, fail, runParser)
 import Text.Parsing.StringParser.CodePoints (anyChar, anyDigit, satisfy, skipSpaces, string)
@@ -122,8 +128,32 @@ readJsonlFile filename = do
       Left _ -> Nothing
       Right e -> e
 
+fromUnix :: Int -> Maybe DateTime
+fromUnix
+  = toNumber
+  >>> (_ * 1000.0)
+  >>> Milliseconds
+  >>> Instant.instant
+  >>> map Instant.toDateTime
+
+fromUnix' :: Int -> DateTime
+fromUnix' t = case fromUnix t of
+  Nothing -> bottom
+  Just d -> d
+
+showUnix :: Int -> String
+showUnix = fromUnix' >>> DateTime.format iso8601ShortFormat
+
 formatFloat :: Number -> String
-formatFloat = format $ Formatter {abbreviations: false, after: 2, before: 0, comma: false, sign: false}
+formatFloat
+  = Number.format
+  $ Number.Formatter
+    { abbreviations: false
+    , after: 2
+    , before: 0
+    , comma: false
+    , sign: false
+    }
 
 runCommand :: TelegramCoords -> Entry -> Effect Unit
 runCommand telegram entry = do
@@ -176,7 +206,7 @@ formatLog transactions = foldMap formatTransaction transactions
   where
     formatTransaction :: Transaction -> String
     formatTransaction {issuer, amount, reason, date}
-      = "- `" <> issuer <> "` spent " <> formatFloat amount <> "€ for `" <> reason <> "` on the " <> show date <> "\n"
+      = "- `" <> issuer <> "` spent " <> formatFloat amount <> "€ for `" <> reason <> "` at " <> showUnix date <> "\n"
 
 
 transactionsFromLog :: Array Entry -> Array Transaction
